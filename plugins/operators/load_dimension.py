@@ -2,7 +2,6 @@ from airflow.hooks.postgres_hook import PostgresHook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 
-
 class LoadDimensionOperator(BaseOperator):
 
     ui_color = '#80BD9E'
@@ -11,23 +10,48 @@ class LoadDimensionOperator(BaseOperator):
     def __init__(self,
                  redshift_conn_id="",
                  sql_query="",
-                 table="",
-                 truncate="",
+                 table = "",
+                 truncate = False,
                  *args, **kwargs):
+
         super(LoadDimensionOperator, self).__init__(*args, **kwargs)
         self.redshift_conn_id = redshift_conn_id
         self.sql_query = sql_query
         self.table = table
         self.truncate = truncate
+        
 
-    def execute(self, context):
-        """
-          Insert data into dimensional tables from staging events and song data.
-          Using a truncate-insert method to empty target tables prior to load.
-        """
-        redshift = PostgresHook(postgres_conn_id=self.redshift_conn_id)
+    def execute(self, context):       
+        redshift = PostgresHook(self.redshift_conn_id)
+        self.log.info(f"Creating {self.table} table")
+        
+        sql_cmd = ""
+        
         if self.truncate:
-            redshift.run(f"TRUNCATE TABLE {self.table}")
-        formatted_sql = self.sql_query.format(self.table)
-        redshift.run(formatted_sql)
-        self.log.info(f"Success: {self.task_id}")
+            
+            sql_query = """
+            TRUNCATE TABLE {}; 
+            
+            INSERT INTO {}
+            {};
+            """
+        
+            sql_cmd = sql_query.format(
+                self.table,
+                self.table,
+                self.sql_query
+            )
+        
+        else:
+            sql_query = """
+                INSERT INTO {}
+                {};
+                """
+
+            sql_cmd = sql_query.format(
+                self.table,
+                self.sql_query
+            )
+        
+        redshift.run(sql_cmd)
+        self.log.info(f"Success: {self.table} table created")
